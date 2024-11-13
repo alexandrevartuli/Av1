@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "269164932543",
+    "project_id": "racefastapp",
+    "storage_bucket": "racefastapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:269164932543:android:a7ef931243f147c056050a",
+        "android_client_info": {
+          "package_name": "com.oficial.racefast"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAVLluiEDX95xT0MjD_o-6yIsd-XVsTfwQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
