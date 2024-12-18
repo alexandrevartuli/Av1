@@ -7,35 +7,39 @@ import android.graphics.Paint;
 public class SafetyCar extends Car {
 
     public SafetyCar(RaceView raceView, Bitmap bitmap, Bitmap trackBitmap, int startX, int startY, double speed, Paint paint) {
-        // Chama o construtor da classe Car
         super(raceView, bitmap, trackBitmap, startX, startY, speed, paint);
-        // Define a prioridade máxima para a thread do Safety Car
         this.setPriority(Thread.MAX_PRIORITY);
     }
 
     @Override
     public void move() {
         try {
-            // Se desejar alterar a velocidade do Safety Car
             double originalSpeed = speed;
-            speed = 6.0; // Exemplo: velocidade reduzida
+            speed = 6.0; // velocidade aumentada
 
-            // Chama o método move() da classe Car, que pode lançar InterruptedException
-            super.move();
+            // Chama os métodos herdados do Car, que não lançam InterruptedException
+            updateSensors();
+            decideDirection();
 
-            // Restaura a velocidade original
+            if (isInCriticalRegion()) {
+                // Safety Car não usa semáforo, passa direto
+                updatePosition();
+            } else {
+                updatePosition();
+            }
+
+            checkCollisions();
+
             speed = originalSpeed;
+            // Remover o catch (InterruptedException e), já que não há esse tipo de exceção lançada
         } catch (Exception e) {
-            // Tratamento de outras exceções
             e.printStackTrace();
         }
     }
 
+
     @Override
     public void draw(Canvas canvas) {
-        // Desenha o Safety Car na tela
         super.draw(canvas);
     }
-
-    // Se necessário, você pode sobrescrever outros métodos ou adicionar novos métodos aqui
 }

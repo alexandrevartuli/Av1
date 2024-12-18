@@ -12,6 +12,13 @@ import android.os.Looper;
 import android.util.AttributeSet;
 import android.view.View;
 
+import com.oficial.rtlib.RTTaskManager;
+import com.oficial.rtlib.TaskInfo;
+import com.oficial.rtlib.TaskChain;
+import com.oficial.rtlib.Subtask;
+import com.oficial.rtlib.RealTimeScheduler;
+import com.oficial.rtlib.AmdahlCalculator;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,7 +27,6 @@ public class RaceView extends View {
     private Bitmap scaledTrackBitmap;
     private List<Vehicle> vehicles;
 
-    // Coordenadas e dimensões da região crítica
     private float criticalRegionX;
     private float criticalRegionY;
     private float criticalRegionWidth;
@@ -28,6 +34,9 @@ public class RaceView extends View {
 
     private Handler uiHandler;
     private Runnable uiRunnable;
+
+    private RTTaskManager rtManager; // Gerenciador das tarefas
+    public static RTTaskManager staticRTManagerReference;
 
     public RaceView(Context context) {
         super(context);
@@ -52,42 +61,39 @@ public class RaceView extends View {
         uiRunnable = new Runnable() {
             @Override
             public void run() {
-                invalidate(); // Redesenhar a tela
-                uiHandler.postDelayed(this, 16); // Chamar novamente após 16ms (~60 FPS)
+                invalidate();
+                uiHandler.postDelayed(this, 16);
             }
         };
+
+        rtManager = new RTTaskManager();
+        staticRTManagerReference = rtManager; // guarda referência estática
+    }
+
+    public static RTTaskManager getRTManager() {
+        return staticRTManagerReference;
     }
 
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         scaledTrackBitmap = Bitmap.createScaledBitmap(trackBitmap, w, h, true);
-
-        // Definir posição e dimensões da região crítica
-        criticalRegionWidth = 200f; // Largura da região crítica
-        criticalRegionHeight = 100f; // Altura da região crítica
-
-        // Centralizar horizontalmente e verticalmente
+        criticalRegionWidth = 200f;
+        criticalRegionHeight = 100f;
         criticalRegionX = (w - criticalRegionWidth) / 2.0f;
-        criticalRegionY = 0.7f*(h - criticalRegionHeight) ;
-
-
+        criticalRegionY = 0.7f*(h - criticalRegionHeight);
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-
-        // Desenhar a pista escalonada
         canvas.drawBitmap(scaledTrackBitmap, 0, 0, null);
 
-        // Desenhar a região crítica
         Paint criticalRegionPaint = new Paint();
-        criticalRegionPaint.setColor(Color.argb(100, 255, 0, 0)); // Vermelho semi-transparente
+        criticalRegionPaint.setColor(Color.argb(100, 255, 0, 0));
         RectF criticalRegion = getCriticalRegionRect();
         canvas.drawRect(criticalRegion, criticalRegionPaint);
 
         synchronized (vehicles) {
-            // Desenhar cada veículo
             for (Vehicle vehicle : vehicles) {
                 vehicle.draw(canvas);
             }
@@ -95,6 +101,17 @@ public class RaceView extends View {
     }
 
     public void startRace() {
+        // Verifica escalonabilidade antes de iniciar
+
+
+        
+        
+        boolean schedulable = rtManager.areAllSchedulable();
+        if (!schedulable) {
+            rtManager.adjustPrioritiesIfNeeded();
+            schedulable = rtManager.areAllSchedulable();
+        }
+
         synchronized (vehicles) {
             for (Vehicle vehicle : vehicles) {
                 if (!vehicle.isAlive()) {
@@ -102,7 +119,6 @@ public class RaceView extends View {
                 }
             }
         }
-
         uiHandler.post(uiRunnable);
     }
 
@@ -114,6 +130,7 @@ public class RaceView extends View {
         }
 
         uiHandler.removeCallbacks(uiRunnable);
+        //saveCarStates(); // opcional
     }
 
     public void finishRace() {
@@ -125,41 +142,86 @@ public class RaceView extends View {
         }
 
         uiHandler.removeCallbacks(uiRunnable);
+        //saveCarStates(); // opcional
+        //clearCarStatesFromFirestore(); // opcional
 
         invalidate();
     }
 
     public void addCars(int quantity) {
-        vehicles.clear(); // Limpar veículos existentes
+        if (quantity < 19) {
+            quantity = 19;
+        }
+        addCarsNormally(quantity);
+    }
+
+    private void addCarsNormally(int quantity) {
+        vehicles.clear();
+        rtManager = new RTTaskManager();
+        staticRTManagerReference = rtManager; // ATUALIZA a referência estática aqui também!
+
+        int baseY = 50;
+        int baseX = 50;
+        int spacing = 50;
+
         for (int i = 0; i < quantity; i++) {
-            // Carregar imagem do carro
             Bitmap carBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.car1);
 
-            // Definir uma cor única para cada carro
             Paint paint = new Paint();
             int[] colors = {Color.RED, Color.BLUE, Color.GREEN, Color.YELLOW, Color.MAGENTA};
             paint.setColor(colors[i % colors.length]);
 
-            // Posicionamento inicial
-            int startX = 100;
-            int startY = 100 + (50 * i);
+            int startX = baseX + (i * spacing);
+            int startY = baseY; // Y fixo
 
-            // Velocidade
             double speed = 3 + (i * 0.5);
 
-            // Criar o carro e adicionar à lista
             Car car = new Car(this, carBitmap, scaledTrackBitmap, startX, startY, speed, paint);
             vehicles.add(car);
+
+            int vehicleId = car.getVehicleId();
+            TaskInfo tInfo = new TaskInfo("CarTask" + vehicleId, vehicleId, 0, 15, 100, 80, 2);
+
+            TaskChain chain = new TaskChain();
+            chain.addSubtask(new Subtask("SensorRead", 5));
+            chain.addSubtask(new Subtask("DBStore", 10));
+            chain.addSubtask(new Subtask("Move", 5));
+
+            rtManager.addTask(tInfo, chain);
         }
 
-        // Adicionar o Safety Car
+        addSafetyCarIfNecessary();
+
+        invalidate();
+    }
+
+    private void addSafetyCarIfNecessary() {
+        boolean safetyCarExists = false;
+        for (Vehicle vehicle : vehicles) {
+            if (vehicle instanceof SafetyCar) {
+                safetyCarExists = true;
+                break;
+            }
+        }
+        if (!safetyCarExists) {
+            addSafetyCar();
+        }
+    }
+
+    private void addSafetyCar() {
         Bitmap safetyCarBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.safety_car);
         Paint safetyCarPaint = new Paint();
         safetyCarPaint.setColor(Color.WHITE);
-        SafetyCar safetyCar = new SafetyCar(this, safetyCarBitmap, scaledTrackBitmap, 150, 150, 5.0, safetyCarPaint);
+        SafetyCar safetyCar = new SafetyCar(this, safetyCarBitmap, scaledTrackBitmap, 100, 50, 5.0, safetyCarPaint);
         vehicles.add(safetyCar);
 
-        invalidate(); // Redesenhar para mostrar os veículos adicionados
+        int vehicleId = safetyCar.getVehicleId();
+        TaskInfo tInfo = new TaskInfo("SafetyCarTask", vehicleId, 0, 15, 100, 50, 1);
+        TaskChain chain = new TaskChain();
+        chain.addSubtask(new Subtask("SensorRead", 5));
+        chain.addSubtask(new Subtask("Move", 5));
+
+        rtManager.addTask(tInfo, chain);
     }
 
     public RectF getCriticalRegionRect() {

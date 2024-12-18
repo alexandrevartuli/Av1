@@ -12,7 +12,10 @@ public abstract class Vehicle extends Thread {
     protected double directionY;
     protected Paint paint;
     protected RaceView raceView;
-    protected boolean running = true; // Controla se a thread deve continuar rodando
+    protected boolean running = true;
+
+    private static int idCounter = 0;
+    private int id; // identificador exclusivo do veículo
 
     public Vehicle(RaceView raceView, int startX, int startY, double speed, Paint paint) {
         this.raceView = raceView;
@@ -20,12 +23,12 @@ public abstract class Vehicle extends Thread {
         this.y = startY;
         this.speed = speed;
         this.paint = paint;
-        this.directionX = 1; // Direção inicial
+        this.directionX = 1;
         this.directionY = 0;
+        this.id = idCounter++; // incrementa a cada novo veículo criado
     }
 
     public abstract void move();
-
     public abstract void draw(Canvas canvas);
 
     @Override
@@ -33,15 +36,11 @@ public abstract class Vehicle extends Thread {
         while (running) {
             try {
                 move();
-
-                // Controla a taxa de atualização (16ms para ~60 FPS)
                 Thread.sleep(16);
             } catch (InterruptedException e) {
-                // Interrupção da thread
                 running = false;
                 Thread.currentThread().interrupt();
             } catch (Exception e) {
-                // Tratamento genérico de exceções
                 e.printStackTrace();
             }
         }
@@ -57,12 +56,15 @@ public abstract class Vehicle extends Thread {
     }
 
     public int getWidth() {
-        // Deve ser implementado nas subclasses
         return 0;
     }
 
     public int getHeight() {
-        // Deve ser implementado nas subclasses
         return 0;
+    }
+
+    // Renomear o método para evitar conflito com Thread.getId()
+    public int getVehicleId() {
+        return id;
     }
 }
